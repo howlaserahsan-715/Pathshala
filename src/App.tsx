@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { 
   INITIAL_SYLLABUS, 
   INITIAL_GK_ITEMS, 
@@ -193,7 +194,7 @@ export default function App() {
         {
           id: 'ann-init-1',
           title: '📢 ৪৭তম বিসিএস গ্র্যান্ড মেগা মক টেস্ট আগামী শুক্রবার অনুষ্ঠিত হবে!',
-          message: 'বিসিএস প্রিলিমিনারি প্রস্তুতির চূড়ান্ত মূল্যায়নের জন্য সকল শিক্ষার্থীকে ওএমআর মক টেস্ট ট্যাবে অংশ নেওয়ার জন্য অনুরোধ করা হচ্ছে। নেগেটিভ মার্কিং -০.৫০ নিয়মে স্বয়ংক্রিয় মেরিট লিস্ট ও ভুল খাতা আপডেট হবে।',
+          message: 'বিসিএস প্রিলিমিনারি প্রস্তুতির চূড়ান্ত মূল্য��য়নের জন্য সকল শিক্ষার্��ীকে ওএমআর মক টেস্ট ট্যাবে অংশ নেওয়ার জন্য অনুরোধ করা হচ্ছে। নেগেটিভ মার্কিং -০.৫০ নিয়মে স্বয়ংক্রিয় মেরিট লিস্ট ও ভুল খাতা আপডেট হবে।',
           date: 'আজকের নোটিশ',
           author: 'প্রধান সুপার এডমিন',
           isImportant: true,
@@ -522,7 +523,7 @@ export default function App() {
     exams: { title: 'ওএমআর মক টেস্ট', subtitle: 'নেগেটিভ মার্কিং সহ বাস্তব মডেল টেস্ট' },
     revision: { title: 'স্পেসড রিভিশন কিউ', subtitle: 'স্মৃতিতে তথ্য দীর্ঘস্থায়ী করার শিডিউল' },
     errors: { title: 'ভুল খাতা (Error Log)', subtitle: 'ভুল হওয়া প্রশ্নসমূহ পুনরায় অনুশীলনের ডায়রি' },
-    settings: { title: 'ক্লাউড সিঙ্ক ও সেটিংস', subtitle: 'গুগল শিট ব্যাকএণ্ড ও প্রোফাইল ব্যবস্থাপনা' },
+    settings: { title: 'ক্লাউ�� সিঙ্ক ও সেটিংস', subtitle: 'গুগল শিট ব্যাকএণ্ড ও প্রোফাইল ব্যবস্থাপনা' },
   };
 
   const currentTabInfo = tabTitles[activeTab] || { title: 'পাঠশালা', subtitle: 'স্টাডি রুম' };
@@ -717,6 +718,9 @@ export default function App() {
         onUpdateUserPassword={handleUpdateUserPassword}
         currentEmail={currentUser.email}
       />
+      
+      {/* Vercel Speed Insights */}
+      <SpeedInsights />
     </div>
   );
 }
