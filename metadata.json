@@ -1,0 +1,6 @@
+{
+  "name": "পাঠশালা — Pathsala AI Study Room",
+  "description": "সম্পূর্ণ এআই স্টাডি রুম ও ১১-২০তম গ্রেড সরকারি চাকরি, প্রাইমারি শিক্ষক নিয়োগ, এনটিআরসিএ (NTRCA) শিক্ষক নিবন্ধন, ব্যাংক ও সরকারি চাকরি প্রস্তুতি প্ল্যাটফর্ম। বিগত প্রশ্ন ব্যাংক, ওএমআর মক টেস্ট ও লাইভ প্ল্যানার সহ।",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
