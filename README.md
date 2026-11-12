@@ -1,11 +1,26 @@
 # পাঠশালা — Pathsala AI Study Room
 
+**লাইভ সাইট:** <https://pathshala-44t.pages.dev/>
+
 বিসিএস, ব্যাংক, প্রাইমারি শিক্ষক নিয়োগ ও NTRCA প্রস্তুতির সম্পূর্ণ এআই স্টাডি রুম।
 React + Vite ফ্রন্টএন্ড, **Cloudflare Pages Functions** API এবং **Cloudflare D1** ডেটাবেস।
 
+## বর্তমান লাইভ সেটআপ
+
+| বিষয় | মান |
+| --- | --- |
+| Pages প্রজেক্ট | `pathshala` (GitHub `howlaserahsan-715/Pathshala`, branch `main`) |
+| লাইভ URL | `https://pathshala-44t.pages.dev` |
+| D1 ডেটাবেস | `pathshala-db` (`b960df13-f1ed-458f-ab09-8004504a80c2`, APAC) |
+| Build command | `npm run build` → `dist` |
+| অটো ডিপ্লয় | `main`-এ পুশ করলেই GitHub webhook → Pages deploy hook দিয়ে বিল্ড হয় |
+
+> পুশ করার ১–২ মিনিটের মধ্যে নতুন ভার্সন লাইভ হয়ে যায়। ম্যানুয়ালি চাইলে
+> `npm run deploy` দিয়ে সরাসরি আপলোডও করা যায়।
+
 ## যা যা আছে
 
-- 🔐 আসল ইমেইল/পাসওয়ার্ড অ্যাকাউন্ট — PBKDF2-SHA256 হ্যাশ, HttpOnly সেশন কুকি
+- 🔐 আসল ইমেইল/পাসওয়ার্ড অ্যাকাউন্ট — PBKDF2-SHA256 হ্যাশ (১,০০,০০০ ইটারেশন, Workers-এর সর্বোচ্চ সীমা), HttpOnly সেশন কুকি
 - ☁️ ক্লাউড সিঙ্ক — প্রোফাইল, স্টাডি টাইম, ভুল খাতা, রিভিশন কিউ D1-এ সংরক্ষিত
 - 👑 সুপার এডমিন প্যানেল — ইউজার/রোল/ব্লক, প্রশ্ন ব্যাংক, নোটিশ, পাসওয়ার্ড রিসেট
 - 📱 ইনস্টলযোগ্য PWA — অফলাইন শেল ক্যাশিং, হোম স্ক্রিনে যোগ করা যায়
@@ -55,15 +70,18 @@ npx wrangler d1 create pathshala-db
 npm run db:init
 ```
 
-### ৩. ডিপ্লয় (দুইভাবে)
+### ৩. ডিপ্লয়
 
-**ক) সরাসরি আপলোড:**
+প্রজেক্ট ইতিমধ্যেই GitHub-এ কানেক্টেড। `main`-এ পুশ করলেই অটো ডিপ্লয় হয়।
+D1 বাইন্ডিং `wrangler.toml` থেকেই Pages বিল্ডে যুক্ত হয় (variable name `DB`)।
+
+**সরাসরি আপলোড (ঐচ্ছিক):**
 
 ```powershell
 npm run deploy
 ```
 
-**খ) GitHub → Cloudflare Pages (auto deploy):**
+**নতুন প্রজেক্টে করতে হলে (GitHub → Cloudflare Pages):**
 
 1. এই রিপো `main` ব্রাঞ্চে পুশ করুন।
 2. Cloudflare Dashboard → **Workers & Pages → Create → Pages → Connect to Git**।
