@@ -2,7 +2,7 @@
  * Pathshala API — Cloudflare Pages Functions
  * Routes under /api/*
  *
- * Auth: email + password (PBKDF2-SHA256, 120k iterations), HttpOnly session cookie.
+ * Auth: email + password (PBKDF2-SHA256, 100k iterations), HttpOnly session cookie.
  * Data: Cloudflare D1 (users, sessions, user_data, questions, announcements, attempts).
  * AI:   Gemini REST API when GEMINI_API_KEY is configured, otherwise Bengali fallback content.
  */
@@ -16,7 +16,8 @@ type Env = {
 
 const SESSION_COOKIE = 'ps_session';
 const SESSION_DAYS = 30;
-const PBKDF2_ITERATIONS = 120000;
+// Workers caps PBKDF2 at 100,000 iterations, so this is the strongest allowed value.
+const PBKDF2_ITERATIONS = 100000;
 const DATA_KINDS = new Set(['errors', 'revisions', 'planner', 'settings']);
 
 const enc = new TextEncoder();
@@ -61,7 +62,7 @@ async function sha256Hex(value: string) {
   return bytesToHex(new Uint8Array(digest));
 }
 
-async function hashPassword(password: string, saltHex: string) {
+async function hashPassword(password: string, saltHex: string, iterations = PBKDF2_ITERATIONS) {
   const key = await crypto.subtle.importKey(
     'raw',
     enc.encode(password),
@@ -70,11 +71,22 @@ async function hashPassword(password: string, saltHex: string) {
     ['deriveBits'],
   );
   const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt: hexToBytes(saltHex), iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: hexToBytes(saltHex), iterations, hash: 'SHA-256' },
     key,
     256,
   );
-  return bytesToHex(new Uint8Array(bits));
+  // The iteration count is stored with the hash so old passwords keep working
+  // if the default is ever changed.
+  return `${iterations}$${bytesToHex(new Uint8Array(bits))}`;
+}
+
+async function verifyPassword(password: string, saltHex: string, stored: string) {
+  const [maybeIterations, maybeHash] = String(stored || '').split('$');
+  const hasPrefix = /^\d+$/.test(maybeIterations || '') && Boolean(maybeHash);
+  const iterations = hasPrefix ? Number(maybeIterations) : PBKDF2_ITERATIONS;
+  const expected = hasPrefix ? maybeHash : String(stored || '');
+  const actual = await hashPassword(password, saltHex, iterations);
+  return safeEqual(actual.split('$')[1] || actual, expected);
 }
 
 function safeEqual(a: string, b: string) {
@@ -456,8 +468,7 @@ export const onRequest: any = async (context: any) => {
         return json({ error: 'আপনার অ্যাকাউন্ট ব্লক করা হয়েছে। সুপার এডমিনের সাথে যোগাযোগ করুন।' }, 403);
       }
 
-      const hash = await hashPassword(password, row.password_salt);
-      if (!safeEqual(hash, row.password_hash)) {
+      if (!(await verifyPassword(password, row.password_salt, row.password_hash))) {
         return json({ error: 'পাসওয়ার্ড সঠিক নয়।' }, 401);
       }
 
@@ -504,8 +515,7 @@ export const onRequest: any = async (context: any) => {
       const current = String(body.currentPassword || '');
       const next = String(body.newPassword || '');
       if (next.length < 8) return json({ error: 'নতুন পাসওয়ার্ড ন্যূনতম ৮ অক্ষরের হতে হবে।' }, 400);
-      const hash = await hashPassword(current, auth.user.password_salt);
-      if (!safeEqual(hash, auth.user.password_hash)) {
+      if (!(await verifyPassword(current, auth.user.password_salt, auth.user.password_hash))) {
         return json({ error: 'বর্তমান পাসওয়ার্ড সঠিক নয়।' }, 401);
       }
       const salt = randomHex(16);
