@@ -1,20 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  INITIAL_SYLLABUS, 
-  INITIAL_GK_ITEMS, 
-  MOCK_EXAM_QUESTIONS, 
-  VIVA_QUESTIONS, 
-  PODCAST_CHAPTERS, 
-  MOCK_PEERS 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  INITIAL_SYLLABUS,
+  INITIAL_GK_ITEMS,
+  MOCK_EXAM_QUESTIONS,
+  VIVA_QUESTIONS,
+  PODCAST_CHAPTERS,
+  MOCK_PEERS,
 } from './data/mockData';
-import { 
-  UserProfile, 
-  SyllabusItem, 
-  GKItem, 
-  QuizQuestion, 
-  ErrorQuestionItem, 
+import {
+  UserProfile,
+  SyllabusItem,
+  GKItem,
+  QuizQuestion,
+  ErrorQuestionItem,
   SpacedRevisionItem,
-  PlatformAnnouncement
+  PlatformAnnouncement,
 } from './types';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -41,9 +41,11 @@ import { LeaderboardBadges } from './components/LeaderboardBadges';
 import { FormulaVault } from './components/FormulaVault';
 import { DailyVocabulary } from './components/DailyVocabulary';
 import { ExamPlanner } from './components/ExamPlanner';
+import { api } from './lib/api';
+
+type ResetRequest = { id: string; email: string; requested_at: string };
 
 export default function App() {
-  // Theme dark/light state
   const [isDark, setIsDark] = useState<boolean>(() => {
     try {
       return localStorage.getItem('pathsala_theme') === 'dark';
@@ -72,319 +74,225 @@ export default function App() {
     }
   }, [isDark]);
 
-  // Multi-user database in localStorage
-  const [allUsers, setAllUsers] = useState<Record<string, UserProfile>>(() => {
-    const defaultSuperAdmin: UserProfile = {
-      id: 'creativeteamoperation@gmail.com',
-      email: 'creativeteamoperation@gmail.com',
-      name: 'প্রধান সুপার এডমিন',
-      password: 'Admin@123456',
-      role: 'superadmin',
-      targetExam: '৪৭তম বিসিএস (সুপার এডমিন কন্ট্রোল)',
-      studyMinutes: 150,
-      currentStreak: 7,
-      lastActiveDate: new Date().toISOString(),
-      score: 600,
-      completedTopics: ['বাংলা ভাষা ও সাহিত্য|সমাস নির্ণয় ও নিয়মাবলী', 'বাংলাদেশ বিষয়াবলী|বাংলাদেশের সংবিধান: মূল অনুচ্ছেদ ও সংশোধনী'],
-      bookmarkedTopics: [],
-      registeredDate: '০১/০১/২০২৬',
-      status: 'active',
-    };
+  const [booting, setBooting] = useState(true);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [allUsers, setAllUsers] = useState<Record<string, UserProfile>>({});
+  const [resetRequests, setResetRequests] = useState<ResetRequest[]>([]);
+  const [syncState, setSyncState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
-    const secondaryAdmin: UserProfile = {
-      id: 'admin@pathsala.com',
-      email: 'admin@pathsala.com',
-      name: 'সুপার এডমিন (অফিসিয়াল)',
-      password: 'Admin@123456',
-      role: 'superadmin',
-      targetExam: 'বিসিএস ও ব্যাংক পরীক্ষা মডারেটর',
-      studyMinutes: 90,
-      currentStreak: 5,
-      lastActiveDate: new Date().toISOString(),
-      score: 450,
-      completedTopics: ['বাংলা ভাষা ও সাহিত্য|সমাস নির্ণয় ও নিয়মাবলী'],
-      bookmarkedTopics: [],
-      registeredDate: '০১/০১/২০২৬',
-      status: 'active',
-    };
+  const [mockQuestions, setMockQuestions] = useState<QuizQuestion[]>(MOCK_EXAM_QUESTIONS);
+  const [announcements, setAnnouncements] = useState<PlatformAnnouncement[]>([]);
+  const [errorLog, setErrorLog] = useState<ErrorQuestionItem[]>([]);
+  const [revisionQueue, setRevisionQueue] = useState<SpacedRevisionItem[]>([]);
 
-    const sampleStudent: UserProfile = {
-      id: 'student@gmail.com',
-      email: 'student@gmail.com',
-      name: 'বিসিএস পরীক্ষার্থী',
-      password: 'Student@123',
-      role: 'student',
-      targetExam: '৪৭তম বিসিএস (প্রশাসন)',
-      studyMinutes: 45,
-      currentStreak: 3,
-      lastActiveDate: new Date().toISOString(),
-      score: 120,
-      completedTopics: ['বাংলা ভাষা ও সাহিত্য|সমাস নির্ণয় ও নিয়মাবলী'],
-      bookmarkedTopics: [],
-      registeredDate: '১৫/০২/২০২৬',
-      status: 'active',
-    };
-
-    try {
-      const stored = localStorage.getItem('pathsala_multi_users');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        // Ensure master super admin always exists
-        if (!parsed['creativeteamoperation@gmail.com']) {
-          parsed['creativeteamoperation@gmail.com'] = defaultSuperAdmin;
-        }
-        if (!parsed['admin@pathsala.com']) {
-          parsed['admin@pathsala.com'] = secondaryAdmin;
-        }
-        return parsed;
-      }
-    } catch (e) {
-      // ignore
-    }
-
-    return {
-      'creativeteamoperation@gmail.com': defaultSuperAdmin,
-      'admin@pathsala.com': secondaryAdmin,
-      'student@gmail.com': sampleStudent,
-    };
-  });
-
-  // Current active user
-  const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
-    // Default to the user's email if possible, or student
-    const defaultEmail = 'creativeteamoperation@gmail.com';
-    return allUsers[defaultEmail] || allUsers['student@gmail.com'] || {
-      id: 'student@gmail.com',
-      email: 'student@gmail.com',
-      name: 'বিসিএস পরীক্ষার্থী',
-      password: 'Student@123',
-      role: 'student',
-      targetExam: '৪৭তম বিসিএস (প্রশাসন)',
-      studyMinutes: 45,
-      currentStreak: 3,
-      lastActiveDate: new Date().toISOString(),
-      score: 120,
-      completedTopics: ['বাংলা ভাষা ও সাহিত্য|সমাস নির্ণয় ও নিয়মাবলী'],
-      bookmarkedTopics: [],
-      registeredDate: 'আজ',
-      status: 'active',
-    };
-  });
-
-  // Dynamic Mock Questions Bank (Admin editable)
-  const [mockQuestions, setMockQuestions] = useState<QuizQuestion[]>(() => {
-    try {
-      const stored = localStorage.getItem('pathsala_custom_questions');
-      return stored ? JSON.parse(stored) : MOCK_EXAM_QUESTIONS;
-    } catch {
-      return MOCK_EXAM_QUESTIONS;
-    }
-  });
-
-  useEffect(() => {
-    localStorage.setItem('pathsala_custom_questions', JSON.stringify(mockQuestions));
-  }, [mockQuestions]);
-
-  // Platform Announcements (Admin broadcastable)
-  const [announcements, setAnnouncements] = useState<PlatformAnnouncement[]>(() => {
-    try {
-      const stored = localStorage.getItem('pathsala_announcements');
-      return stored ? JSON.parse(stored) : [
-        {
-          id: 'ann-init-1',
-          title: '📢 ৪৭তম বিসিএস গ্র্যান্ড মেগা মক টেস্ট আগামী শুক্রবার অনুষ্ঠিত হবে!',
-          message: 'বিসিএস প্রিলিমিনারি প্রস্তুতির চূড়ান্ত মূল্যায়নের জন্য সকল শিক্ষার্থীকে ওএমআর মক টেস্ট ট্যাবে অংশ নেওয়ার জন্য অনুরোধ করা হচ্ছে। নেগেটিভ মার্কিং -০.৫০ নিয়মে স্বয়ংক্রিয় মেরিট লিস্ট ও ভুল খাতা আপডেট হবে।',
-          date: 'আজকের নোটিশ',
-          author: 'প্রধান সুপার এডমিন',
-          isImportant: true,
-        }
-      ];
-    } catch {
-      return [];
-    }
-  });
-
-  useEffect(() => {
-    localStorage.setItem('pathsala_announcements', JSON.stringify(announcements));
-  }, [announcements]);
-
-  // User Error Notebook Items
-  const [errorLog, setErrorLog] = useState<ErrorQuestionItem[]>(() => {
-    try {
-      const stored = localStorage.getItem(`pathsala_errors_${currentUser.email}`);
-      return stored ? JSON.parse(stored) : [
-        {
-          id: 'err-sample-1',
-          question: 'কোনো সংখ্যার ৬০% থেকে ৬০ বিয়োগ করলে বিয়োগফল ৬০ হয়। সংখ্যাটি কত?',
-          options: ['১০০', '১৫০', '২০০', '২৫০'],
-          userAnswer: '১৫০',
-          correctAnswer: '২০০',
-          explanation: '০.৬x - ৬০ = ৬০ => ০.৬x = ১২০ => x = ২০০।',
-          subject: 'গাণিতিক যুক্তি ও মানসিক দক্ষতা',
-          date: 'আজ',
-        }
-      ];
-    } catch {
-      return [];
-    }
-  });
-
-  // Spaced Revision Queue Items
-  const [revisionQueue, setRevisionQueue] = useState<SpacedRevisionItem[]>(() => {
-    try {
-      const stored = localStorage.getItem(`pathsala_revision_${currentUser.email}`);
-      return stored ? JSON.parse(stored) : [
-        {
-          id: 'rev-1',
-          topicKey: 'বাংলা ভাষা ও সাহিত্য|সমাস নির্ণয় ও নিয়মাবলী',
-          subject: 'বাংলা ভাষা ও সাহিত্য',
-          topic: 'সমাস নির্ণয় ও নিয়মাবলী',
-          level: 2,
-          nextReviewDate: 'আগামীকাল',
-          lastReviewed: 'গতকাল',
-        }
-      ];
-    } catch {
-      return [];
-    }
-  });
-
-  // Active Tab & Navigation
   const [activeTab, setActiveTab] = useState<string>('home');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
-  // Active Explainer context
   const [explainerContext, setExplainerContext] = useState<{ subject: string; topic: string }>({
     subject: 'বাংলা ভাষা ও সাহিত্য',
-    topic: 'সমাস নির্ণয় ও নিয়মাবলী',
+    topic: 'সমাস নির্ণয় ও নিয়মাবলী',
   });
 
-  // Save changes to current user in allUsers DB & localStorage
+  const profileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const errorsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revisionsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedErrors = useRef<string>('');
+  const lastSavedRevisions = useRef<string>('');
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  /* ------------------------------------------------------------------ */
+  /* Boot: restore session + load cloud data                            */
+  /* ------------------------------------------------------------------ */
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const me = await api.me();
+        if (!cancelled && me.user) {
+          setCurrentUser(me.user);
+          await loadUserData(me.user);
+        }
+      } catch (error) {
+        console.error('Session restore failed', error);
+      } finally {
+        if (!cancelled) setBooting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const loadUserData = async (user: UserProfile) => {
+    const [errorsRes, revisionsRes, questionsRes, announcementsRes, leaderboardRes] =
+      await Promise.allSettled([
+        api.getData<ErrorQuestionItem[]>('errors'),
+        api.getData<SpacedRevisionItem[]>('revisions'),
+        api.questions(),
+        api.announcements(),
+        api.leaderboard(),
+      ]);
+
+    if (errorsRes.status === 'fulfilled' && Array.isArray(errorsRes.value.data)) {
+      lastSavedErrors.current = JSON.stringify(errorsRes.value.data);
+      setErrorLog(errorsRes.value.data);
+    } else {
+      lastSavedErrors.current = '[]';
+      setErrorLog([]);
+    }
+
+    if (revisionsRes.status === 'fulfilled' && Array.isArray(revisionsRes.value.data)) {
+      lastSavedRevisions.current = JSON.stringify(revisionsRes.value.data);
+      setRevisionQueue(revisionsRes.value.data);
+    } else {
+      lastSavedRevisions.current = '[]';
+      setRevisionQueue([]);
+    }
+
+    if (questionsRes.status === 'fulfilled' && questionsRes.value.questions.length) {
+      setMockQuestions(questionsRes.value.questions as QuizQuestion[]);
+    } else {
+      setMockQuestions(MOCK_EXAM_QUESTIONS);
+    }
+
+    if (announcementsRes.status === 'fulfilled') {
+      setAnnouncements(announcementsRes.value.announcements as PlatformAnnouncement[]);
+    }
+
+    if (leaderboardRes.status === 'fulfilled') {
+      const map: Record<string, UserProfile> = {};
+      for (const peer of leaderboardRes.value.users) map[peer.email] = peer;
+      setAllUsers(map);
+    }
+
+    if (user.role === 'superadmin') {
+      await refreshAdminData();
+    }
+  };
+
+  const refreshAdminData = async () => {
+    try {
+      const [usersRes, resetsRes] = await Promise.all([
+        api.admin.users(),
+        api.admin.resetRequests(),
+      ]);
+      setAllUsers(usersRes.users);
+      setResetRequests(resetsRes.requests);
+    } catch (error) {
+      console.error('Admin data load failed', error);
+    }
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* Persistence                                                        */
+  /* ------------------------------------------------------------------ */
+
+  const scheduleProfileSave = (patch: Partial<UserProfile>) => {
+    if (profileTimer.current) clearTimeout(profileTimer.current);
+    setSyncState('saving');
+    profileTimer.current = setTimeout(async () => {
+      try {
+        const result = await api.updateProfile(patch);
+        if (mounted.current) {
+          setCurrentUser(result.user);
+          setSyncState('saved');
+          setTimeout(() => mounted.current && setSyncState('idle'), 1800);
+        }
+      } catch (error) {
+        console.error('Profile save failed', error);
+        if (mounted.current) setSyncState('error');
+      }
+    }, 500);
+  };
+
   const saveUserData = (updated: Partial<UserProfile>) => {
-    const newProfile = { ...currentUser, ...updated };
-    setCurrentUser(newProfile);
-
-    const updatedAll = {
-      ...allUsers,
-      [newProfile.email]: newProfile,
-    };
-    setAllUsers(updatedAll);
-    localStorage.setItem('pathsala_multi_users', JSON.stringify(updatedAll));
+    setCurrentUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...updated };
+      scheduleProfileSave(updated);
+      return next;
+    });
   };
 
-  // Sync error log to localStorage
   useEffect(() => {
-    localStorage.setItem(`pathsala_errors_${currentUser.email}`, JSON.stringify(errorLog));
-  }, [errorLog, currentUser.email]);
+    if (!currentUser) return;
+    const serialized = JSON.stringify(errorLog);
+    if (serialized === lastSavedErrors.current) return;
+    lastSavedErrors.current = serialized;
+    if (errorsTimer.current) clearTimeout(errorsTimer.current);
+    errorsTimer.current = setTimeout(() => {
+      api.putData('errors', errorLog).catch((e) => console.error('Error log save failed', e));
+    }, 700);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errorLog, currentUser?.email]);
 
-  // Sync revision queue to localStorage
   useEffect(() => {
-    localStorage.setItem(`pathsala_revision_${currentUser.email}`, JSON.stringify(revisionQueue));
-  }, [revisionQueue, currentUser.email]);
+    if (!currentUser) return;
+    const serialized = JSON.stringify(revisionQueue);
+    if (serialized === lastSavedRevisions.current) return;
+    lastSavedRevisions.current = serialized;
+    if (revisionsTimer.current) clearTimeout(revisionsTimer.current);
+    revisionsTimer.current = setTimeout(() => {
+      api.putData('revisions', revisionQueue).catch((e) => console.error('Revision save failed', e));
+    }, 700);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revisionQueue, currentUser?.email]);
 
-  // User Registration Handler
-  const handleRegisterUser = (newUser: UserProfile) => {
-    const updated = {
-      ...allUsers,
-      [newUser.email]: newUser,
-    };
-    setAllUsers(updated);
-    localStorage.setItem('pathsala_multi_users', JSON.stringify(updated));
+  /* ------------------------------------------------------------------ */
+  /* Auth                                                               */
+  /* ------------------------------------------------------------------ */
+
+  const handleAuthed = async (user: UserProfile) => {
+    setCurrentUser(user);
+    setActiveTab('home');
+    lastSavedErrors.current = '';
+    lastSavedRevisions.current = '';
+    await loadUserData(user);
   };
 
-  // User Password Update Handler (e.g. from Forgot Password)
-  const handleUpdateUserPassword = (email: string, newPass: string): boolean => {
-    const user = allUsers[email];
-    if (!user) return false;
-
-    const updatedUser = { ...user, password: newPass };
-    const updated = {
-      ...allUsers,
-      [email]: updatedUser,
-    };
-    setAllUsers(updated);
-    localStorage.setItem('pathsala_multi_users', JSON.stringify(updated));
-
-    if (currentUser.email === email) {
-      setCurrentUser(updatedUser);
+  const handleLogout = async () => {
+    try {
+      await api.logout();
+    } catch (error) {
+      console.error('Logout failed', error);
     }
-    return true;
+    setCurrentUser(null);
+    setAllUsers({});
+    setErrorLog([]);
+    setRevisionQueue([]);
+    setAnnouncements([]);
+    setMockQuestions(MOCK_EXAM_QUESTIONS);
+    setResetRequests([]);
   };
 
-  // Super Admin: Update Role (promote/demote)
-  const handleUpdateUserRole = (email: string, newRole: 'student' | 'superadmin') => {
-    const user = allUsers[email];
-    if (!user) return;
-    const updatedUser = { ...user, role: newRole };
-    const updated = { ...allUsers, [email]: updatedUser };
-    setAllUsers(updated);
-    localStorage.setItem('pathsala_multi_users', JSON.stringify(updated));
-    if (currentUser.email === email) {
-      setCurrentUser(updatedUser);
-    }
-    alert(`${user.name} এর রোল পরিবর্তন করে "${newRole === 'superadmin' ? 'সুপার এডমিন' : 'শিক্ষার্থী'}" করা হয়েছে!`);
-  };
+  /* ------------------------------------------------------------------ */
+  /* Study handlers                                                     */
+  /* ------------------------------------------------------------------ */
 
-  // Super Admin: Update Status (block/active)
-  const handleUpdateUserStatus = (email: string, newStatus: 'active' | 'blocked') => {
-    const user = allUsers[email];
-    if (!user) return;
-    const updatedUser = { ...user, status: newStatus };
-    const updated = { ...allUsers, [email]: updatedUser };
-    setAllUsers(updated);
-    localStorage.setItem('pathsala_multi_users', JSON.stringify(updated));
-    alert(`${user.name} এর অ্যাকাউন্ট "${newStatus === 'blocked' ? 'ব্লক' : 'সক্রিয়'}" করা হয়েছে!`);
-  };
-
-  // Super Admin: Admin Reset Password
-  const handleAdminResetPassword = (email: string, tempPass: string) => {
-    handleUpdateUserPassword(email, tempPass);
-  };
-
-  // Super Admin: Delete User
-  const handleDeleteUser = (email: string) => {
-    const updated = { ...allUsers };
-    delete updated[email];
-    setAllUsers(updated);
-    localStorage.setItem('pathsala_multi_users', JSON.stringify(updated));
-    alert(`ইউজার মুছে ফেলা হয়েছে।`);
-  };
-
-  // Super Admin: Question Bank Handlers
-  const handleAddQuestion = (q: QuizQuestion) => {
-    setMockQuestions((prev) => [q, ...prev]);
-  };
-
-  const handleDeleteQuestion = (id: string) => {
-    setMockQuestions((prev) => prev.filter((q) => q.id !== id));
-  };
-
-  // Super Admin: Announcement Handlers
-  const handleAddAnnouncement = (a: PlatformAnnouncement) => {
-    setAnnouncements((prev) => [a, ...prev]);
-  };
-
-  const handleDeleteAnnouncement = (id: string) => {
-    setAnnouncements((prev) => prev.filter((a) => a.id !== id));
-  };
-
-  // Study Handlers
   const handleStudyTimeEarned = (minutes: number) => {
-    const newMinutes = currentUser.studyMinutes + minutes;
-    const newScore = currentUser.score + minutes * 2;
-    saveUserData({ studyMinutes: newMinutes, score: newScore });
+    if (!currentUser) return;
+    saveUserData({
+      studyMinutes: currentUser.studyMinutes + minutes,
+      score: currentUser.score + minutes * 2,
+    });
   };
 
   const handleToggleComplete = (subject: string, topic: string) => {
+    if (!currentUser) return;
     const key = `${subject}|${topic}`;
     const exists = currentUser.completedTopics.includes(key);
-    let nextList: string[];
-    if (exists) {
-      nextList = currentUser.completedTopics.filter((t) => t !== key);
-    } else {
-      nextList = [...currentUser.completedTopics, key];
-    }
+    const nextList = exists
+      ? currentUser.completedTopics.filter((t) => t !== key)
+      : [...currentUser.completedTopics, key];
     saveUserData({ completedTopics: nextList });
   };
 
@@ -418,10 +326,9 @@ export default function App() {
   const handleAddToRevision = (subject: string, topic: string) => {
     const key = `${subject}|${topic}`;
     if (revisionQueue.some((r) => r.topicKey === key)) {
-      alert('টপিকটি ইতিমধ্যে আপনার রিভিশন কিউতে রয়েছে!');
+      alert('টপিকটি ইতিমধ্যে আপনার রিভিশন কিউতে রয়েছে!');
       return;
     }
-
     const newItem: SpacedRevisionItem = {
       id: `rev-${Date.now()}`,
       topicKey: key,
@@ -432,7 +339,7 @@ export default function App() {
       lastReviewed: 'আজ',
     };
     setRevisionQueue([newItem, ...revisionQueue]);
-    alert(`"${topic}" সফলভাবে রিভিশন কিউতে যুক্ত হয়েছে!`);
+    alert(`"${topic}" সফলভাবে রিভিশন কিউতে যুক্ত হয়েছে!`);
   };
 
   const handleReviewPerformance = (id: string, performance: 'again' | 'hard' | 'good' | 'easy') => {
@@ -456,13 +363,8 @@ export default function App() {
           nextDate = '১৪ দিন পর';
         }
 
-        return {
-          ...item,
-          level: newLevel,
-          nextReviewDate: nextDate,
-          lastReviewed: 'আজ',
-        };
-      })
+        return { ...item, level: newLevel, nextReviewDate: nextDate, lastReviewed: 'আজ' };
+      }),
     );
   };
 
@@ -470,71 +372,157 @@ export default function App() {
     setRevisionQueue((prev) => prev.filter((r) => r.id !== id));
   };
 
-  const handleLoginUser = (profile: UserProfile) => {
-    setCurrentUser(profile);
-    const updated = {
-      ...allUsers,
-      [profile.email]: profile,
-    };
-    setAllUsers(updated);
-    localStorage.setItem('pathsala_multi_users', JSON.stringify(updated));
-    setIsAuthModalOpen(false);
+  /* ------------------------------------------------------------------ */
+  /* Admin handlers (server-backed)                                     */
+  /* ------------------------------------------------------------------ */
 
-    // Load errors & revision queue for selected user
+  const handleUpdateUserRole = async (email: string, newRole: 'student' | 'superadmin') => {
     try {
-      const uErrors = localStorage.getItem(`pathsala_errors_${profile.email}`);
-      if (uErrors) setErrorLog(JSON.parse(uErrors));
-      else setErrorLog([]);
+      await api.admin.updateUser(email, { role: newRole });
+      await refreshAdminData();
+      alert(
+        `${email} এর রোল পরিবর্তন করে "${newRole === 'superadmin' ? 'সুপার এডমিন' : 'শিক্ষার্থী'}" করা হয়েছে!`,
+      );
+    } catch (error: any) {
+      alert(error?.message || 'রোল পরিবর্তন ব্যর্থ হয়েছে।');
+    }
+  };
 
-      const uRev = localStorage.getItem(`pathsala_revision_${profile.email}`);
-      if (uRev) setRevisionQueue(JSON.parse(uRev));
-      else setRevisionQueue([]);
-    } catch (e) {
-      // ignore
+  const handleUpdateUserStatus = async (email: string, newStatus: 'active' | 'blocked') => {
+    try {
+      await api.admin.updateUser(email, { status: newStatus });
+      await refreshAdminData();
+      alert(`অ্যাকাউন্ট "${newStatus === 'blocked' ? 'ব্লক' : 'সক্রিয়'}" করা হয়েছে!`);
+    } catch (error: any) {
+      alert(error?.message || 'স্ট্যাটাস পরিবর্তন ব্যর্থ হয়েছে।');
+    }
+  };
+
+  const handleAdminResetPassword = async (email: string, tempPass: string) => {
+    try {
+      await api.admin.resetPassword(email, tempPass);
+      await refreshAdminData();
+      alert(`${email} এর পাসওয়ার্ড রিসেট হয়েছে। নতুন পাসওয়ার্ডটি ইউজারকে জানিয়ে দিন।`);
+    } catch (error: any) {
+      alert(error?.message || 'পাসওয়ার্ড রিসেট ব্যর্থ হয়েছে।');
+    }
+  };
+
+  const handleDeleteUser = async (email: string) => {
+    try {
+      await api.admin.deleteUser(email);
+      await refreshAdminData();
+      alert('ইউজার মুছে ফেলা হয়েছে।');
+    } catch (error: any) {
+      alert(error?.message || 'ইউজার মুছতে ব্যর্থ হয়েছে।');
+    }
+  };
+
+  const handleAddQuestion = async (q: QuizQuestion) => {
+    try {
+      await api.admin.addQuestion(q);
+      setMockQuestions((prev) => [q, ...prev]);
+    } catch (error: any) {
+      alert(error?.message || 'প্রশ্ন যোগ করা যায়নি।');
+    }
+  };
+
+  const handleDeleteQuestion = async (id: string) => {
+    try {
+      await api.admin.deleteQuestion(id);
+      setMockQuestions((prev) => prev.filter((q) => q.id !== id));
+    } catch (error: any) {
+      alert(error?.message || 'প্রশ্ন মুছে ফেলা যায়নি।');
+    }
+  };
+
+  const handleAddAnnouncement = async (a: PlatformAnnouncement) => {
+    try {
+      await api.admin.addAnnouncement(a);
+      setAnnouncements((prev) => [a, ...prev]);
+    } catch (error: any) {
+      alert(error?.message || 'নোটিশ যোগ করা যায়নি।');
+    }
+  };
+
+  const handleDeleteAnnouncement = async (id: string) => {
+    try {
+      await api.admin.deleteAnnouncement(id);
+      setAnnouncements((prev) => prev.filter((a) => a.id !== id));
+    } catch (error: any) {
+      alert(error?.message || 'নোটিশ মুছে ফেলা যায়নি।');
     }
   };
 
   const handleResetAllData = () => {
-    localStorage.clear();
+    // Cloud data stays safe; this only clears device-local caches.
+    try {
+      const theme = localStorage.getItem('pathsala_theme');
+      localStorage.clear();
+      if (theme) localStorage.setItem('pathsala_theme', theme);
+    } catch {
+      // ignore
+    }
     window.location.reload();
   };
 
-  // Header Titles lookup
+  /* ------------------------------------------------------------------ */
+  /* Render                                                             */
+  /* ------------------------------------------------------------------ */
+
   const tabTitles: Record<string, { title: string; subtitle: string }> = {
-    home: { title: 'হোম ড্যাশবোর্ড', subtitle: 'আপনার সম্পূর্ণ ও স্বয়ংক্রিয় সরকারি চাকরি প্রস্তুতির হাব' },
+    home: { title: 'হোম ড্যাশবোর্ড', subtitle: 'আপনার সম্পূর্ণ ও স্বয়ংক্রিয় সরকারি চাকরি প্রস্তুতির হাব' },
     planner: { title: 'পরীক্ষার কাউন্টডাউন ও স্টাডি রুটিন', subtitle: 'টার্গেট পরীক্ষার দিনক্ষণ ও দৈনিক টু-ডু প্ল্যানার' },
     pastPapers: { title: 'বিগত বিসিএস প্রশ্ন ব্যাংক আর্কাইভ', subtitle: '১০ম থেকে ৪৬তম বিসিএস প্রিলিমিনারি প্রশ্ন সমাধান ও মক টেস্ট' },
-    customQuiz: { title: 'কাস্টম স্পিড কুইজ মেকার', subtitle: 'দুর্বল বিষয়ের ওপর ভিত্তি করে কাস্টম টেস্ট তৈরি করুন' },
+    customQuiz: { title: 'কাস্টম স্পিড কুইজ মেকার', subtitle: 'দুর্বল বিষয়ের ওপর ভিত্তি করে কাস্টম টেস্ট তৈরি করুন' },
     leaderboard: { title: 'ক্যাডার লিডারবোর্ড ও সম্মাননা ব্যাজ', subtitle: 'সাপ্তাহিক সেরা ১০ শিক্ষার্থী ও অর্জন' },
     formulaVault: { title: 'শর্টকাট সূত্র ও চিট-শীট ভল্ট', subtitle: 'গণিত, ব্যাকরণ ও সংবিধানের মেমোরি ছন্দ' },
-    vocabulary: { title: 'সম্পাদকীয় ভোকাবুলারি ব্যাংক', subtitle: 'The Daily Star ও প্রখ্যাত পত্রিকার সম্পাদকীয় শব্দভাণ্ডার' },
+    vocabulary: { title: 'সম্পাদকীয় ভোকাবুলারি ব্যাংক', subtitle: 'The Daily Star ও প্রখ্যাত পত্রিকার সম্পাদকীয় শব্দভাণ্ডার' },
     superAdmin: { title: 'সুপার এডমিন কন্ট্রোল রুম', subtitle: 'ইউজার ম্যানেজমেন্ট, প্রশ্ন ব্যাংক ও নোটিশ পাবলিশিং' },
-    conceptExplainer: { title: 'ডেইলি কনসেপ্ট ক্ল্যারিফায়ার', subtitle: 'প্রতিদিনের পড়ার কনসেপ্ট, শর্টকাট টেকনিক ও উদাহরণ' },
+    conceptExplainer: { title: 'ডেইলি কনসেপ্ট ক্ল্যারিফায়ার', subtitle: 'প্রতিদিনের পড়ার কনসেপ্ট, শর্টকাট টেকনিক ও উদাহরণ' },
     pomodoro: { title: 'পোমোডোরো স্টাডি টাইমার', subtitle: 'ফোকাসড ও সুশৃঙ্খল স্টাডি সেশন' },
-    tutor: { title: 'এআই প্রাইভেট টিউটর', subtitle: 'যেকোনো বিষয়ের ডাউট সলভার ও মেন্টর' },
-    syllabus: { title: 'অধ্যায়ভিত্তিক পড়াশোনা — লিখিত ও এমসিকিউ হাব', subtitle: 'টপিক অনুযায়ী বিগত MCQ, লিখিত প্রশ্ন ও সমাধান, প্রামাণ্য রেফারেন্স ও ক্লাস' },
-    current: { title: 'AI Live GK & Current Affairs', subtitle: 'রিয়েল-টাইম সংগৃহীত তথ্য ও সাধারণ জ্ঞান ক্যাপসুল' },
+    tutor: { title: 'এআই প্রাইভেট টিউটর', subtitle: 'যেকোনো বিষয়ের ডাউট সলভার ও মেন্টর' },
+    syllabus: { title: 'অধ্যায়ভিত্তিক পড়াশোনা — লিখিত ও এমসিকিউ হাব', subtitle: 'টপিক অনুযায়ী বিগত MCQ, লিখিত প্রশ্ন ও সমাধান, প্রামাণ্য রেফারেন্স ও ক্লাস' },
+    current: { title: 'AI Live GK & Current Affairs', subtitle: 'রিয়েল-টাইম সংগৃহীত তথ্য ও সাধারণ জ্ঞান ক্যাপসুল' },
     viva: { title: 'এআই ভাইভা সিমুলেটর', subtitle: 'মৌখিক পরীক্ষার মক ভাইভা ও তাৎক্ষণিক স্কোরকার্ড' },
     podcast: { title: 'স্টাডি পডকাস্ট অডিও মোড', subtitle: 'অডিও আকারে শুনুন গুরুত্বপূর্ণ লেকচার' },
-    focusRoom: { title: 'ফোকাস স্টাডি ওয়ার্ল্ড', subtitle: 'অনলাইনে সক্রিয় অন্যান্য চাকরিপ্রার্থীদের সাথে লাইভ স্টাডি' },
-    challenge: { title: 'ডেইলি চ্যালেঞ্জ এরিনা', subtitle: 'প্রতিদিনের এমসিকিউ টেস্ট ও পয়েন্ট অর্জন' },
-    eligibility: { title: 'চাকরি যোগ্যতা ক্যালকুলেটর', subtitle: 'বয়স ও ডিগ্রি অনুযায়ী যোগ্য চাকরির সার্কুলার' },
+    focusRoom: { title: 'ফোকাস স্টাডি ওয়ার্ল্ড', subtitle: 'অনলাইনে সক্রিয় অন্যান্য চাকরিপ্রার্থীদের সাথে লাইভ স্টাডি' },
+    challenge: { title: 'ডেইলি চ্যালেঞ্জ এরিনা', subtitle: 'প্রতিদিনের এমসিকিউ টেস্ট ও পয়েন্ট অর্জন' },
+    eligibility: { title: 'চাকরি যোগ্যতা ক্যালকুলেটর', subtitle: 'বয়স ও ডিগ্রি অনুযায়ী যোগ্য চাকরির সার্কুলার' },
     exams: { title: 'ওএমআর মক টেস্ট', subtitle: 'নেগেটিভ মার্কিং সহ বাস্তব মডেল টেস্ট' },
-    revision: { title: 'স্পেসড রিভিশন কিউ', subtitle: 'স্মৃতিতে তথ্য দীর্ঘস্থায়ী করার শিডিউল' },
-    errors: { title: 'ভুল খাতা (Error Log)', subtitle: 'ভুল হওয়া প্রশ্নসমূহ পুনরায় অনুশীলনের ডায়রি' },
-    settings: { title: 'ক্লাউড সিঙ্ক ও সেটিংস', subtitle: 'গুগল শিট ব্যাকএণ্ড ও প্রোফাইল ব্যবস্থাপনা' },
+    revision: { title: 'স্পেসড রিভিশন কিউ', subtitle: 'স্মৃতিতে তথ্য দীর্ঘস্থায়ী করার শিডিউল' },
+    errors: { title: 'ভুল খাতা (Error Log)', subtitle: 'ভুল হওয়া প্রশ্নসমূহ পুনরায় অনুশীলনের ডায়রি' },
+    settings: { title: 'ক্লাউড সিঙ্ক ও সেটিংস', subtitle: 'প্রোফাইল, পাসওয়ার্ড ও ডেটা ব্যাকআপ' },
   };
 
   const currentTabInfo = tabTitles[activeTab] || { title: 'পাঠশালা', subtitle: 'স্টাডি রুম' };
 
+  if (booting) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center gap-4">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white font-black text-3xl flex items-center justify-center shadow-xl shadow-indigo-600/30 animate-pulse">
+          প
+        </div>
+        <p className="text-sm font-semibold text-slate-500">পাঠশালা ক্লাউড স্টাডি রুম লোড হচ্ছে...</p>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-100 dark:bg-slate-950">
+        <AuthModal isOpen onClose={() => undefined} onAuthed={handleAuthed} canClose={false} />
+      </div>
+    );
+  }
+
   return (
     <div className={`min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex transition-colors duration-200 ${isDark ? 'dark' : ''}`}>
-      {/* Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         currentUser={currentUser}
-        onLogout={() => setIsAuthModalOpen(true)}
+        onLogout={handleLogout}
         isDark={isDark}
         onToggleDark={() => setIsDark(!isDark)}
         isOpenMobile={isMobileSidebarOpen}
@@ -543,20 +531,17 @@ export default function App() {
         revisionCount={revisionQueue.length}
       />
 
-      {/* Main Content Area */}
       <div className="flex-1 lg:ml-72 flex flex-col min-w-0">
-        {/* Top Header */}
         <Header
           title={currentTabInfo.title}
           subtitle={currentTabInfo.subtitle}
           currentUser={currentUser}
           onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
-          onOpenProfileModal={() => setIsAuthModalOpen(true)}
+          onOpenProfileModal={() => setActiveTab('settings')}
           isDark={isDark}
           onToggleDark={() => setIsDark(!isDark)}
         />
 
-        {/* Viewport Page Content */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           {activeTab === 'home' && (
             <HomeDashboard
@@ -570,9 +555,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'planner' && (
-            <ExamPlanner onStartPomodoro={() => setActiveTab('pomodoro')} />
-          )}
+          {activeTab === 'planner' && <ExamPlanner onStartPomodoro={() => setActiveTab('pomodoro')} />}
 
           {activeTab === 'pastPapers' && (
             <PastBCSPapers
@@ -590,11 +573,7 @@ export default function App() {
           )}
 
           {activeTab === 'leaderboard' && (
-            <LeaderboardBadges
-              currentUser={currentUser}
-              allUsers={allUsers}
-              peers={MOCK_PEERS}
-            />
+            <LeaderboardBadges currentUser={currentUser} allUsers={allUsers} peers={MOCK_PEERS} />
           )}
 
           {activeTab === 'formulaVault' && <FormulaVault />}
@@ -615,6 +594,8 @@ export default function App() {
               announcements={announcements}
               onAddAnnouncement={handleAddAnnouncement}
               onDeleteAnnouncement={handleDeleteAnnouncement}
+              resetRequests={resetRequests}
+              onRefreshResetRequests={refreshAdminData}
             />
           )}
 
@@ -623,18 +604,14 @@ export default function App() {
               initialSubject={explainerContext.subject}
               initialTopic={explainerContext.topic}
               onMarkComplete={handleToggleComplete}
-              onOpenVideo={(t) => {
-                setActiveTab('syllabus');
-              }}
+              onOpenVideo={() => setActiveTab('syllabus')}
               isTopicCompleted={currentUser.completedTopics.includes(
-                `${explainerContext.subject}|${explainerContext.topic}`
+                `${explainerContext.subject}|${explainerContext.topic}`,
               )}
             />
           )}
 
-          {activeTab === 'pomodoro' && (
-            <PomodoroTimer onStudyTimeEarned={handleStudyTimeEarned} />
-          )}
+          {activeTab === 'pomodoro' && <PomodoroTimer onStudyTimeEarned={handleStudyTimeEarned} />}
 
           {activeTab === 'tutor' && <AITutor />}
 
@@ -689,11 +666,7 @@ export default function App() {
           )}
 
           {activeTab === 'errors' && (
-            <ErrorLog
-              errors={errorLog}
-              onRemoveError={handleRemoveError}
-              onClearAll={handleClearAllErrors}
-            />
+            <ErrorLog errors={errorLog} onRemoveError={handleRemoveError} onClearAll={handleClearAllErrors} />
           )}
 
           {activeTab === 'settings' && (
@@ -704,19 +677,16 @@ export default function App() {
               completedTopicsCount={currentUser.completedTopics.length}
             />
           )}
+
+          {syncState !== 'idle' && (
+            <div className="fixed bottom-4 right-4 z-40 text-[11px] font-bold px-3 py-2 rounded-xl shadow-lg border bg-white/95 dark:bg-slate-900/95 border-slate-200 dark:border-slate-700">
+              {syncState === 'saving' && <span className="text-slate-500">☁️ ক্লাউডে সেভ হচ্ছে...</span>}
+              {syncState === 'saved' && <span className="text-emerald-600">✓ ক্লাউডে সেভ হয়েছে</span>}
+              {syncState === 'error' && <span className="text-rose-600">⚠️ সেভ ব্যর্থ — আবার চেষ্টা হবে</span>}
+            </div>
+          )}
         </main>
       </div>
-
-      {/* Multi-User Login, Registration & Forgot Password Modal */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onLogin={handleLoginUser}
-        existingUsers={allUsers}
-        onRegisterUser={handleRegisterUser}
-        onUpdateUserPassword={handleUpdateUserPassword}
-        currentEmail={currentUser.email}
-      />
     </div>
   );
 }

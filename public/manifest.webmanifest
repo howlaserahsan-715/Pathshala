@@ -1,0 +1,41 @@
+{
+  "name": "পাঠশালা — Pathsala AI Study Room",
+  "short_name": "পাঠশালা",
+  "description": "বিসিএস, ব্যাংক, প্রাইমারি ও NTRCA প্রস্তুতির সম্পূর্ণ এআই স্টাডি রুম — ক্লাউড সিঙ্ক, মক টেস্ট, ভুল খাতা ও রিভিশন কিউ সহ।",
+  "lang": "bn",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "ড্যাশবোর্ড",
+      "url": "/",
+      "description": "হোম ড্যাশবোর্ড খুলুন"
+    }
+  ]
+}

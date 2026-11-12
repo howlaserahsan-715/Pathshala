@@ -34,6 +34,8 @@ interface SuperAdminPanelProps {
   announcements: PlatformAnnouncement[];
   onAddAnnouncement: (a: PlatformAnnouncement) => void;
   onDeleteAnnouncement: (id: string) => void;
+  resetRequests?: Array<{ id: string; email: string; requested_at: string }>;
+  onRefreshResetRequests?: () => void;
 }
 
 export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
@@ -49,6 +51,8 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
   announcements,
   onAddAnnouncement,
   onDeleteAnnouncement,
+  resetRequests = [],
+  onRefreshResetRequests,
 }) => {
   const [activeTab, setActiveTab] = useState<'users' | 'questions' | 'announcements' | 'guide'>('users');
   const [userSearch, setUserSearch] = useState('');
@@ -278,6 +282,43 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
             </div>
           </div>
 
+          {resetRequests.length > 0 && (
+            <div className="rounded-2xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-3.5 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5" />
+                  পাসওয়ার্ড রিসেট রিকোয়েস্ট ({resetRequests.length})
+                </span>
+                {onRefreshResetRequests && (
+                  <button
+                    onClick={onRefreshResetRequests}
+                    className="text-[10px] font-bold text-amber-700 dark:text-amber-400 hover:underline"
+                  >
+                    রিফ্রেশ
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {resetRequests.map((request) => (
+                  <div
+                    key={request.id}
+                    className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900 rounded-xl px-2.5 py-1.5"
+                  >
+                    <span className="text-[11px] font-mono text-slate-700 dark:text-slate-300">
+                      {request.email}
+                    </span>
+                    <button
+                      onClick={() => setResettingUserEmail(request.email)}
+                      className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                    >
+                      রিসেট করুন
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* User Table */}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
@@ -327,7 +368,9 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
                       </td>
 
                       <td className="py-3 px-3 font-mono text-[11px] text-slate-500">
-                        {u.password ? '••••••••' : 'ডিফল্ট'}
+                        <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-sans font-semibold">
+                          <Lock className="w-3 h-3" /> এনক্রিপ্টেড
+                        </span>
                       </td>
 
                       <td className="py-3 px-3">
